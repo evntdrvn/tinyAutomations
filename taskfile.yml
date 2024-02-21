@@ -1,0 +1,28 @@
+version: '3'
+vars:
+  AWS_ACCOUNT_ID:
+    sh: aws sts get-caller-identity --query 'Account' --output text
+  DIR:
+    sh: echo ${dir=${PWD##*/}}
+  pwdPath: '{{.USER_WORKING_DIR}}'
+  currentDir:
+    sh: echo $(basename "{{.pwdPath}}")
+
+tasks:
+
+  init:
+    cmds:
+      - cd {{.pwdPath}} && terraform init -input=false -backend=true -backend-config=bucket={{.AWS_ACCOUNT_ID}}-tf-state -backend-config=region=eu-central-1 -backend-config=key=terraform.{{.currentDir}}.tfstate -backend-config=encrypt=true -backend-config=dynamodb_table=terraform_lock_{{.AWS_ACCOUNT_ID}}
+  plan:
+    cmds:
+      - cd {{.pwdPath}} && terraform workspace select {{.WS}} && terraform fmt -recursive && terraform get && terraform validate && terraform plan -input=false -var-file="envs/{{.WS}}.tfvars" -var "aws_account_id={{.AWS_ACCOUNT_ID}}" -var layer={{.currentDir}} {{.CLI_ARGS |  replace "--" "-"}}
+    vars:
+      WS:
+        sh: cd {{.pwdPath}} &&  terraform workspace list | grep -v "default" | cut -c 3- | tr -d '\n'
+  rm:
+    cmds:
+      - cd {{.pwdPath}} && rm -rf .terraform
+
+  import:
+    cmds:
+      - terraform import -input=false -var-file="envs/{{.WS}}.tfvars" -var "aws_account_id={{.AWS_ACCOUNT_ID}}" -var layer={{.currentDir}} {{.CLI_ARGS |  replace "--" "-"}}
